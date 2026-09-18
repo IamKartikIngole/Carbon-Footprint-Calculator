@@ -1,0 +1,1745 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  EcoStep : Carbon Footprint Calculator & Reduction Advisor
+  SINGLE-FILE EDITION — the whole app in one HTML file.
+  Home, Calculator, Results & About are sections switched by a
+  tiny hash router (#home / #calculator / #results / #about).
+  Stack: HTML5 + Tailwind CSS (CDN) + Vanilla JS + localStorage.
+  ============================================================
+-->
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="EcoStep helps you calculate your carbon footprint and gives you personalized, actionable tips to reduce it." />
+  <title>EcoStep — Carbon Footprint Calculator &amp; Reduction Advisor</title>
+
+  <!-- Tailwind CSS via CDN (no build step required) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class', // dark mode via .dark on <html> (toggled by js/main.js)
+      theme: {
+        extend: {
+          colors: {
+            leaf: {
+              50:  '#f2f8f1',
+              100: '#e0efdd',
+              200: '#c2dfbe',
+              300: '#95c790',
+              400: '#65a95f',
+              500: '#448b3f',
+              600: '#33702f', // primary buttons — 4.9:1 contrast on white
+              700: '#295927',
+              800: '#234821',
+              900: '#1d3c1c',
+            },
+            soil: {
+              700: '#3f3a34',
+              800: '#2c2925',
+              900: '#1e1c19',
+            },
+            mist: {
+              50:  '#f7f8f7',
+              100: '#eef0ee',
+              200: '#dfe3df',
+            },
+          },
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Apply the saved theme BEFORE first paint to avoid a flash of the wrong theme -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem('ecostep_theme') || 'system';
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) { /* localStorage unavailable - default to bright */ }
+    })();
+  </script>
+
+  <!-- ============ INLINE STYLES (formerly css/style.css) ============ -->
+  <style>
+/* ============================================================
+   EcoStep — css/style.css
+   Custom styles that EXTEND Tailwind (loaded via CDN).
+   Tailwind handles layout/colors; this file adds animations,
+   chart bars, and accessibility niceties that are cleaner to
+   write as plain CSS.
+   ============================================================ */
+
+/* ---------- 1. Entrance animation for hero content ---------- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out both;
+}
+
+/* Respect users who prefer reduced motion (accessibility) */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up,
+  .bar-fill,
+  .card-hover {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- 2. Card hover lift used on feature cards ---------- */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -8px rgba(41, 89, 39, 0.18);
+}
+
+/* ---------- 3. CSS-only chart bars (used on results.html) ----------
+   The width is set inline by results.js (style="--bar-w: 65%").
+   The bar animates from 0 to its target width on page load.     */
+.bar-fill {
+  width: var(--bar-w, 0%);
+  transition: width 1s ease-out 0.2s;
+}
+
+/* ---------- 4. Multi-step form: hide inactive steps ---------- */
+.form-step { display: none; }
+.form-step.active { display: block; animation: fadeInUp 0.35s ease-out both; }
+
+/* ---------- 5. Invalid input highlight (set by calculator.js) ---------- */
+.input-error {
+  border-color: #dc2626 !important;      /* red-600 */
+  background-color: #fef2f2 !important;  /* red-50  */
+}
+
+/* ---------- 6. Nicer number inputs (remove spinners in some browsers) ---------- */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---------- 7. Print-friendly results page ---------- */
+@media print {
+  header, footer, .no-print { display: none !important; }
+  body { background: #fff !important; }
+}
+
+/* ---------- 8. THEME SYSTEM (Bright / Dark / System) ----------
+   The <html> element gets a .dark class (added by js/main.js or
+   the tiny inline script in each page's <head>). Tailwind's
+   dark: variants do most of the work; these rules cover native
+   widgets and the two custom pill controls.                    */
+
+/* Native inputs, selects, scrollbars & date pickers follow the theme */
+.dark { color-scheme: dark; }
+
+/* Theme switcher buttons (☀️ / 🌙 / 💻) in the navbar */
+.theme-btn {
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.theme-btn:hover,
+.theme-btn:focus-visible { opacity: 1; }
+.theme-active {
+  opacity: 1;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.10);
+}
+.dark .theme-active { background-color: #3f3a34; }
+
+/* Personal / Business mode pill on the calculator (theme-aware) */
+.mode-btn { color: #3f3a34; }
+.dark .mode-btn { color: #dfe3df; }
+.mode-btn:hover { color: #295927; }
+.dark .mode-btn:hover { color: #95c790; }
+.mode-active {
+  background-color: #ffffff;
+  color: #295927 !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.dark .mode-active { background-color: #1e1c19; color: #95c790 !important; }
+
+/* Invalid-input highlight, dark variant */
+.dark .input-error {
+  border-color: #f87171 !important;                 /* red-400 */
+  background-color: rgba(127, 29, 29, 0.25) !important;
+}
+
+  /* Single-file edition: sections act as pages */
+  .app-page.hidden { display: none; }
+  </style>
+
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2333702f"><path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z"/></svg>' />
+</head>
+
+<body class="bg-mist-50 dark:bg-soil-900 text-soil-800 dark:text-mist-100 font-sans antialiased">
+
+  <!-- Accessibility: lets keyboard users jump straight past the nav -->
+  <a href="#main-content"
+     class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-leaf-700 focus:text-white focus:px-4 focus:py-2 focus:rounded-md">
+    Skip to main content
+  </a>
+
+  <!-- ===================== NAVIGATION BAR (shared by all views) ===================== -->
+  <header class="bg-white/90 dark:bg-soil-800/90 backdrop-blur border-b border-mist-200 dark:border-soil-700 sticky top-0 z-40">
+    <nav aria-label="Main navigation" class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="flex items-center justify-between h-16">
+        <a href="#home" class="flex items-center gap-2 group" aria-label="EcoStep home">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-leaf-600 dark:text-leaf-400 group-hover:rotate-12 transition-transform" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z"/>
+          </svg>
+          <span class="text-xl font-bold text-soil-900 dark:text-mist-50 tracking-tight">Eco<span class="text-leaf-600 dark:text-leaf-400">Step</span></span>
+        </a>
+
+        <!-- Desktop links (the router adds the active highlight via data-nav) -->
+        <ul class="hidden md:flex items-center gap-1">
+          <li><a href="#home"       data-nav="home"       class="px-3 py-2 rounded-md text-sm font-medium text-soil-700 dark:text-mist-200 hover:text-leaf-700 dark:hover:text-leaf-300 hover:bg-leaf-50 dark:hover:bg-soil-700 transition-colors">Home</a></li>
+          <li><a href="#calculator" data-nav="calculator" class="px-3 py-2 rounded-md text-sm font-medium text-soil-700 dark:text-mist-200 hover:text-leaf-700 dark:hover:text-leaf-300 hover:bg-leaf-50 dark:hover:bg-soil-700 transition-colors">Calculator</a></li>
+          <li><a href="#results"    data-nav="results"    class="px-3 py-2 rounded-md text-sm font-medium text-soil-700 dark:text-mist-200 hover:text-leaf-700 dark:hover:text-leaf-300 hover:bg-leaf-50 dark:hover:bg-soil-700 transition-colors">My Results</a></li>
+          <li><a href="#about"      data-nav="about"      class="px-3 py-2 rounded-md text-sm font-medium text-soil-700 dark:text-mist-200 hover:text-leaf-700 dark:hover:text-leaf-300 hover:bg-leaf-50 dark:hover:bg-soil-700 transition-colors">About</a></li>
+          <li>
+            <a href="#calculator" class="ml-2 inline-flex items-center gap-1.5 bg-leaf-600 hover:bg-leaf-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">Get Started</a>
+          </li>
+        </ul>
+
+        <div class="flex items-center gap-1.5">
+          <!-- Theme switcher: Bright / Dark / System (always visible) -->
+          <div role="group" aria-label="Colour theme" class="flex items-center gap-0.5 bg-mist-100 dark:bg-soil-700 border border-mist-200 dark:border-soil-700 rounded-lg p-1">
+            <button type="button" data-theme="light" aria-pressed="false" aria-label="Bright theme" title="Bright theme" class="theme-btn p-1.5 rounded-md text-sm leading-none focus:outline-none focus:ring-2 focus:ring-leaf-500">☀️</button>
+            <button type="button" data-theme="dark" aria-pressed="false" aria-label="Dark theme" title="Dark theme" class="theme-btn p-1.5 rounded-md text-sm leading-none focus:outline-none focus:ring-2 focus:ring-leaf-500">🌙</button>
+            <button type="button" data-theme="system" aria-pressed="false" aria-label="Follow system theme" title="Follow system theme" class="theme-btn p-1.5 rounded-md text-sm leading-none focus:outline-none focus:ring-2 focus:ring-leaf-500">💻</button>
+          </div>
+          <!-- Mobile hamburger -->
+          <button id="mobile-menu-btn" type="button"
+                  class="md:hidden inline-flex items-center justify-center p-2 rounded-md text-soil-700 dark:text-mist-200 hover:bg-mist-100 dark:hover:bg-soil-700 focus:outline-none focus:ring-2 focus:ring-leaf-500"
+                  aria-controls="mobile-menu" aria-expanded="false" aria-label="Toggle navigation menu">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile dropdown menu -->
+      <ul id="mobile-menu" class="hidden md:hidden pb-4 space-y-1">
+        <li><a href="#home"       data-nav="home"       class="block px-3 py-2 rounded-md text-base font-medium text-soil-700 dark:text-mist-200 hover:bg-leaf-50 dark:hover:bg-soil-700 hover:text-leaf-700 dark:hover:text-leaf-300">Home</a></li>
+        <li><a href="#calculator" data-nav="calculator" class="block px-3 py-2 rounded-md text-base font-medium text-soil-700 dark:text-mist-200 hover:bg-leaf-50 dark:hover:bg-soil-700 hover:text-leaf-700 dark:hover:text-leaf-300">Calculator</a></li>
+        <li><a href="#results"    data-nav="results"    class="block px-3 py-2 rounded-md text-base font-medium text-soil-700 dark:text-mist-200 hover:bg-leaf-50 dark:hover:bg-soil-700 hover:text-leaf-700 dark:hover:text-leaf-300">My Results</a></li>
+        <li><a href="#about"      data-nav="about"      class="block px-3 py-2 rounded-md text-base font-medium text-soil-700 dark:text-mist-200 hover:bg-leaf-50 dark:hover:bg-soil-700 hover:text-leaf-700 dark:hover:text-leaf-300">About</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <!-- ================== VIEW: HOME ================== -->
+    <section data-page="home" class="app-page">
+
+    <!-- ===================== HERO SECTION ===================== -->
+    <section class="relative overflow-hidden">
+      <!-- Decorative soft-green gradient background -->
+      <div class="absolute inset-0 bg-gradient-to-b from-leaf-50 via-white to-mist-50 dark:from-soil-900 dark:via-soil-900 dark:to-soil-900" aria-hidden="true"></div>
+
+      <div class="relative max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-28 grid lg:grid-cols-2 gap-12 items-center">
+        <!-- Left column: headline + CTA -->
+        <div class="fade-in-up">
+          <p class="inline-flex items-center gap-2 bg-leaf-100 dark:bg-leaf-900/40 text-leaf-800 dark:text-leaf-200 text-xs font-semibold uppercase tracking-wider px-3 py-1.5 rounded-full mb-5">
+            <span class="h-2 w-2 rounded-full bg-leaf-600 animate-pulse" aria-hidden="true"></span>
+            A Community Engagement Initiative
+          </p>
+
+          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-soil-900 dark:text-mist-50 leading-tight">
+            Know your footprint.<br />
+            <span class="text-leaf-600 dark:text-leaf-400">Shrink it, together.</span>
+          </h1>
+
+          <p class="mt-5 text-lg text-soil-700 dark:text-mist-200 max-w-xl leading-relaxed">
+            The average person generates <strong>tonnes of CO₂ every year</strong> — most of us have no idea
+            where it comes from. EcoStep turns your everyday habits — travel, electricity, food — into a clear
+            number, then gives you a personalized plan to bring it down.
+          </p>
+
+          <!-- Primary + secondary calls to action -->
+          <div class="mt-8 flex flex-col sm:flex-row gap-4">
+            <a href="#calculator"
+               class="inline-flex justify-center items-center gap-2 bg-leaf-600 hover:bg-leaf-700 text-white text-base font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-leaf-600/20 transition-all hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Start Calculating
+            </a>
+            <a href="#about"
+               class="inline-flex justify-center items-center gap-2 bg-white dark:bg-soil-800 hover:bg-mist-100 dark:hover:bg-soil-700 text-soil-800 dark:text-mist-100 text-base font-semibold px-8 py-3.5 rounded-xl border border-mist-200 dark:border-soil-700 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+              Our Mission
+            </a>
+          </div>
+
+          <p class="mt-4 text-sm text-soil-700 dark:text-mist-200">
+            ✓ Free &nbsp;•&nbsp; ✓ Takes under 3 minutes &nbsp;•&nbsp; ✓ Your data never leaves your browser
+          </p>
+        </div>
+
+        <!-- Right column: decorative illustration (inline SVG so it works offline) -->
+        <div class="hidden lg:flex justify-center fade-in-up" aria-hidden="true">
+          <svg viewBox="0 0 400 400" class="w-full max-w-md drop-shadow-xl" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Illustration of the Earth surrounded by leaves">
+            <circle cx="200" cy="200" r="170" fill="#e0efdd"/>
+            <circle cx="200" cy="200" r="130" fill="#c2dfbe"/>
+            <circle cx="200" cy="200" r="95"  fill="#65a95f"/>
+            <!-- Simple continents -->
+            <path d="M160 150 q30 -25 60 -5 q20 15 5 35 q-25 20 -50 5 q-25 -15 -15 -35z" fill="#33702f"/>
+            <path d="M215 235 q25 -10 35 10 q8 20 -12 28 q-22 8 -32 -8 q-8 -18 9 -30z" fill="#33702f"/>
+            <path d="M145 220 q15 -8 25 5 q8 12 -5 20 q-15 8 -25 -4 q-8 -12 5 -21z" fill="#295927"/>
+            <!-- Orbiting leaves -->
+            <g fill="#448b3f">
+              <path d="M330 110 c-25 5 -32 22 -38 36 c14 -2 30 -8 38 -36z"/>
+              <path d="M70 290 c25 -5 32 -22 38 -36 c-14 2 -30 8 -38 36z"/>
+              <path d="M320 300 c-20 2 -27 15 -31 27 c11 -1 24 -5 31 -27z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== IMPACT STATS STRIP ===================== -->
+    <section aria-labelledby="stats-heading" class="bg-leaf-700 text-white">
+      <h2 id="stats-heading" class="sr-only">Why carbon tracking matters</h2>
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
+        <div>
+          <p class="text-4xl font-extrabold">~2 tonnes</p>
+          <p class="mt-1 text-leaf-100 text-sm">CO₂ the average Indian emits per year — the global average is about 4 tonnes.</p>
+        </div>
+        <div>
+          <p class="text-4xl font-extrabold">72%</p>
+          <p class="mt-1 text-leaf-100 text-sm">of global emissions are linked to household consumption — our daily choices matter.</p>
+        </div>
+        <div>
+          <p class="text-4xl font-extrabold">1 tree</p>
+          <p class="mt-1 text-leaf-100 text-sm">absorbs about 22 kg of CO₂ a year. Small actions, multiplied by a community, add up.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HOW IT WORKS ===================== -->
+    <section aria-labelledby="how-heading" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+      <div class="text-center max-w-2xl mx-auto">
+        <h2 id="how-heading" class="text-3xl sm:text-4xl font-bold text-soil-900 dark:text-mist-50">How EcoStep works</h2>
+        <p class="mt-3 text-soil-700 dark:text-mist-200">Three simple steps from “no idea” to “clear action plan.”</p>
+      </div>
+
+      <div class="mt-12 grid md:grid-cols-3 gap-6">
+        <!-- Step 1 -->
+        <article class="card-hover bg-white dark:bg-soil-800 rounded-2xl border border-mist-200 dark:border-soil-700 p-7">
+          <div class="flex items-center justify-center h-12 w-12 rounded-xl bg-leaf-100 dark:bg-leaf-900/40 text-leaf-700 dark:text-leaf-300 font-bold text-lg" aria-hidden="true">1</div>
+          <h3 class="mt-4 text-lg font-bold text-soil-900 dark:text-mist-50">Answer a few questions</h3>
+          <p class="mt-2 text-soil-700 dark:text-mist-200 text-sm leading-relaxed">
+            Tell us about your transportation, home energy use, and diet &amp; waste habits.
+            Switch to <strong>Business mode</strong> to estimate a small organization's footprint instead.
+          </p>
+        </article>
+
+        <!-- Step 2 -->
+        <article class="card-hover bg-white dark:bg-soil-800 rounded-2xl border border-mist-200 dark:border-soil-700 p-7">
+          <div class="flex items-center justify-center h-12 w-12 rounded-xl bg-leaf-100 dark:bg-leaf-900/40 text-leaf-700 dark:text-leaf-300 font-bold text-lg" aria-hidden="true">2</div>
+          <h3 class="mt-4 text-lg font-bold text-soil-900 dark:text-mist-50">See your footprint</h3>
+          <p class="mt-2 text-soil-700 dark:text-mist-200 text-sm leading-relaxed">
+            EcoStep applies India-specific emission factors to convert your answers into
+            tonnes of CO₂ per year, broken down by category on a visual dashboard.
+          </p>
+        </article>
+
+        <!-- Step 3 -->
+        <article class="card-hover bg-white dark:bg-soil-800 rounded-2xl border border-mist-200 dark:border-soil-700 p-7">
+          <div class="flex items-center justify-center h-12 w-12 rounded-xl bg-leaf-100 dark:bg-leaf-900/40 text-leaf-700 dark:text-leaf-300 font-bold text-lg" aria-hidden="true">3</div>
+          <h3 class="mt-4 text-lg font-bold text-soil-900 dark:text-mist-50">Get your action plan</h3>
+          <p class="mt-2 text-soil-700 dark:text-mist-200 text-sm leading-relaxed">
+            Our <strong>Reduction Advisor</strong> finds your biggest emission source and gives you
+            3–5 personalized, realistic tips — with the estimated CO₂ savings for each.
+          </p>
+        </article>
+      </div>
+
+      <!-- Big centered CTA at the bottom of the section -->
+      <div class="mt-14 text-center">
+        <a href="#calculator"
+           class="inline-flex items-center gap-2 bg-leaf-600 hover:bg-leaf-700 text-white text-lg font-semibold px-10 py-4 rounded-xl shadow-lg shadow-leaf-600/20 transition-all hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          Start Calculating — it's free
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+          </svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- ===================== COMMUNITY IMPACT ===================== -->
+    <section aria-labelledby="community-heading" class="bg-white dark:bg-soil-800 border-t border-mist-200 dark:border-soil-700">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-16 grid lg:grid-cols-2 gap-10 items-center">
+        <div>
+          <h2 id="community-heading" class="text-3xl font-bold text-soil-900 dark:text-mist-50">Built for community impact</h2>
+          <p class="mt-4 text-soil-700 dark:text-mist-200 leading-relaxed">
+            Climate change can feel too big for one person to fix. But when a neighbourhood, a classroom,
+            or a small business measures its footprint, patterns emerge — and change becomes practical.
+            EcoStep was built as a student community-engagement project to make carbon literacy simple,
+            local, and actionable.
+          </p>
+          <ul class="mt-6 space-y-3 text-soil-800 dark:text-mist-100">
+            <li class="flex items-start gap-3">
+              <svg class="h-6 w-6 text-leaf-600 dark:text-leaf-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span><strong>Privacy-first:</strong> everything runs in your browser — no accounts, no servers, no tracking.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="h-6 w-6 text-leaf-600 dark:text-leaf-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span><strong>Education-focused:</strong> every result explains the math behind it, so you learn as you calculate.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="h-6 w-6 text-leaf-600 dark:text-leaf-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span><strong>Action-oriented:</strong> you leave with specific next steps, not just a scary number.</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Decorative quote card -->
+        <figure class="bg-leaf-50 dark:bg-leaf-900/20 border border-leaf-200 dark:border-leaf-800 rounded-2xl p-8">
+          <blockquote class="text-xl font-medium text-soil-900 dark:text-mist-50 leading-relaxed">
+            “We can't manage what we don't measure. The first step toward a sustainable community
+            is simply knowing where we stand.”
+          </blockquote>
+          <figcaption class="mt-4 text-sm font-semibold text-leaf-700 dark:text-leaf-300">— The EcoStep Project Team</figcaption>
+        </figure>
+      </div>
+    </section>
+  </section>
+
+    <!-- ================== VIEW: CALCULATOR ================== -->
+    <section data-page="calculator" class="app-page max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+
+    <!-- ===================== PAGE HEADER ===================== -->
+    <div class="text-center">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-soil-900 dark:text-mist-50">Carbon Footprint Calculator</h1>
+      <p class="mt-3 text-soil-700 dark:text-mist-200">Answer a few quick questions. Estimates only — no answer needs to be perfect.</p>
+    </div>
+
+    <!-- ===================== MODE TOGGLE (Personal / Business) ===================== -->
+    <div class="mt-8 flex justify-center">
+      <div role="group" aria-label="Calculator mode" class="inline-flex bg-mist-100 dark:bg-soil-700 border border-mist-200 dark:border-soil-700 rounded-xl p-1">
+        <!-- aria-pressed communicates the toggle state to screen readers -->
+        <button id="mode-personal" type="button" aria-pressed="true"
+                class="mode-btn mode-active px-6 py-2.5 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-leaf-500">
+          👤 Personal
+        </button>
+        <button id="mode-business" type="button" aria-pressed="false"
+                class="mode-btn px-6 py-2.5 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-leaf-500">
+          🏢 Business
+        </button>
+      </div>
+    </div>
+
+    <!-- ===================== PROGRESS INDICATOR ===================== -->
+    <div class="mt-8" aria-hidden="false">
+      <div class="flex justify-between text-xs font-semibold text-soil-700 dark:text-mist-200 mb-2">
+        <span id="progress-label-1" class="text-leaf-700 dark:text-leaf-300">1. Transportation</span>
+        <span id="progress-label-2">2. Energy</span>
+        <span id="progress-label-3">3. Lifestyle &amp; Waste</span>
+      </div>
+      <!-- role=progressbar lets assistive tech announce completion -->
+      <div class="h-2 bg-mist-200 dark:bg-soil-700 rounded-full overflow-hidden"
+           role="progressbar" id="progress-bar-track"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="33" aria-label="Form progress">
+        <div id="progress-bar" class="h-full bg-leaf-600 rounded-full transition-all duration-500" style="width: 33%"></div>
+      </div>
+    </div>
+
+    <!-- ===================== THE MULTI-STEP FORM ===================== -->
+    <!-- novalidate: we run our own friendlier validation in calculator.js -->
+    <form id="calc-form" class="mt-8 bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl shadow-sm p-6 sm:p-8" novalidate>
+
+      <!-- Screen-reader announcements when validation fails (aria-live) -->
+      <p id="form-status" class="sr-only" role="status" aria-live="polite"></p>
+
+      <!-- ============ STEP 1 : TRANSPORTATION ============ -->
+      <fieldset class="form-step active" data-step="1">
+        <legend class="text-xl font-bold text-soil-900 dark:text-mist-50 flex items-center gap-2">
+          <span aria-hidden="true">🚗</span> Transportation
+        </legend>
+        <p class="mt-1 text-sm text-soil-700 dark:text-mist-200">How you travel each week is usually the biggest emission source.</p>
+
+        <div class="mt-6 space-y-6">
+
+          <!-- Transport medium: Public vs Private (controls which km fields show) -->
+          <div>
+            <label for="transport-mode" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              <span data-label="tmode-personal">Which transport medium do you mainly use?</span>
+              <span data-label="tmode-business" class="hidden">How does your business mainly move people/goods?</span>
+            </label>
+            <select id="transport-mode" name="transport-mode"
+                    class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 bg-white dark:bg-soil-800 text-soil-900 dark:text-mist-50 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none">
+              <option value="private" selected>🚗 Private vehicle (car / bike / scooter)</option>
+              <option value="public">🚌 Public transport (bus / metro / train / auto)</option>
+            </select>
+          </div>
+
+          <!-- PRIVATE VEHICLES ONLY: car km + bike km (shown when mode = private) -->
+          <div id="field-private" class="space-y-6">
+            <!-- Car / four-wheeler -->
+            <div>
+              <label for="car-km" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+                <span data-label="car-personal">Car km you drive per week</span>
+                <span data-label="car-business" class="hidden">Company car / van km per week (all vehicles)</span>
+                <span class="font-normal text-soil-700 dark:text-mist-200">— enter 0 if none</span>
+              </label>
+              <input type="number" id="car-km" name="car-km" inputmode="decimal" min="0" step="any" placeholder="e.g. 100"
+                     aria-describedby="car-km-hint car-km-error"
+                     class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+              <p id="car-km-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">Tip: a daily 10 km each-way commute ≈ 100–120 km a week.</p>
+              <p id="car-km-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+            </div>
+
+            <!-- Bike / two-wheeler -->
+            <div>
+              <label for="bike-km" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+                <span data-label="bike-personal">Bike / scooter km you ride per week</span>
+                <span data-label="bike-business" class="hidden">Company two-wheeler km per week</span>
+                <span class="font-normal text-soil-700 dark:text-mist-200">— enter 0 if none</span>
+              </label>
+              <input type="number" id="bike-km" name="bike-km" inputmode="decimal" min="0" step="any" placeholder="e.g. 60"
+                     aria-describedby="bike-km-error"
+                     class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+              <p id="bike-km-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+            </div>
+          </div>
+
+          <!-- PUBLIC TRANSPORT ONLY: km per week (shown when mode = public) -->
+          <div id="field-public" class="hidden">
+            <label for="public-km" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              Public transport km per week <span class="font-normal text-soil-700 dark:text-mist-200">(bus, metro, train, shared auto)</span>
+            </label>
+            <input type="number" id="public-km" name="public-km" inputmode="decimal" min="0" step="any" placeholder="e.g. 120"
+                   aria-describedby="public-km-hint public-km-error"
+                   class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+            <p id="public-km-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">Public transport emits far less per passenger — great choice! 🌱</p>
+            <p id="public-km-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+          </div>
+
+          <!-- WALKING (both modes): zero-emission, earns a credit on the dashboard -->
+          <div>
+            <label for="walk-km" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              How many km do you walk per week? <span class="font-normal text-soil-700 dark:text-mist-200">— enter 0 if unsure</span>
+            </label>
+            <input type="number" id="walk-km" name="walk-km" inputmode="decimal" min="0" step="any" placeholder="e.g. 10"
+                   aria-describedby="walk-km-hint walk-km-error"
+                   class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+            <p id="walk-km-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">Walking is 100% zero-emission — we'll show how much CO₂ you avoid compared to driving.</p>
+            <p id="walk-km-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ============ STEP 2 : HOME / FACILITY ENERGY ============ -->
+      <fieldset class="form-step" data-step="2">
+        <legend class="text-xl font-bold text-soil-900 dark:text-mist-50 flex items-center gap-2">
+          <span aria-hidden="true">⚡</span>
+          <span data-label="energy-personal">Home Energy</span>
+          <span data-label="energy-business" class="hidden">Facility Energy</span>
+        </legend>
+        <p class="mt-1 text-sm text-soil-700 dark:text-mist-200">Grab a recent utility bill if you have one — a rough average works too.</p>
+
+        <div class="mt-6 space-y-6">
+          <!-- Electricity bill (INR) -->
+          <div>
+            <label for="electric-bill" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              Monthly electricity bill (₹ INR)
+            </label>
+            <input type="number" id="electric-bill" name="electric-bill" inputmode="decimal" min="0" step="any" placeholder="e.g. 1500"
+                   aria-describedby="electric-hint electric-bill-error"
+                   class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+            <p id="electric-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">We estimate units (kWh) from your bill using an average tariff of ₹8 per unit.</p>
+            <p id="electric-bill-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+          </div>
+
+          <!-- Cooking gas / LPG bill (INR) -->
+          <div>
+            <label for="gas-bill" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              Monthly gas bill — LPG / PNG (₹ INR) <span class="font-normal text-soil-700 dark:text-mist-200">— enter 0 if none</span>
+            </label>
+            <input type="number" id="gas-bill" name="gas-bill" inputmode="decimal" min="0" step="any" placeholder="e.g. 900"
+                   aria-describedby="gas-hint gas-bill-error"
+                   class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+            <p id="gas-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">One 14.2 kg LPG cylinder (~₹850) releases about 42 kg of CO₂ when burned.</p>
+            <p id="gas-bill-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ============ STEP 3 : LIFESTYLE & WASTE ============ -->
+      <fieldset class="form-step" data-step="3">
+        <legend class="text-xl font-bold text-soil-900 dark:text-mist-50 flex items-center gap-2">
+          <span aria-hidden="true">🍽️</span>
+          <span data-label="waste-personal">Diet &amp; Waste</span>
+          <span data-label="waste-business" class="hidden">Operations &amp; Waste</span>
+        </legend>
+        <p class="mt-1 text-sm text-soil-700 dark:text-mist-200">Food and waste habits quietly add a lot to a footprint.</p>
+
+        <div class="mt-6 space-y-6">
+          <!-- PERSONAL ONLY: diet plan -->
+          <div id="field-diet">
+            <label for="diet" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">What is your diet plan?</label>
+            <select id="diet" name="diet"
+                    class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 bg-white dark:bg-soil-800 text-soil-900 dark:text-mist-50 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none">
+              <option value="veg" selected>🥗 Vegetarian</option>
+              <option value="nonveg">🍗 Non-vegetarian</option>
+            </select>
+            <p class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">Meat and dairy production emit more CO₂ than plant-based food per meal.</p>
+          </div>
+
+          <!-- BUSINESS ONLY: employee count (hidden by default) -->
+          <div id="field-employees" class="hidden">
+            <label for="employees" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">Number of employees</label>
+            <input type="number" id="employees" name="employees" inputmode="numeric" min="1" step="1" placeholder="e.g. 12"
+                   aria-describedby="employees-hint employees-error"
+                   class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 text-soil-900 dark:text-mist-50 placeholder:text-gray-500 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none" />
+            <p id="employees-hint" class="mt-1.5 text-xs text-soil-700 dark:text-mist-200">Used to estimate office waste and supplies (~160 kg CO₂ per employee per year).</p>
+            <p id="employees-error" class="hidden mt-1.5 text-sm font-medium text-red-700 dark:text-red-400" role="alert"></p>
+          </div>
+
+          <!-- BOTH MODES: recycling habits -->
+          <div>
+            <label for="recycling" class="block text-sm font-semibold text-soil-900 dark:text-mist-50">
+              <span data-label="recycling-personal">How consistently do you recycle?</span>
+              <span data-label="recycling-business" class="hidden">Does your business run a recycling program?</span>
+            </label>
+            <select id="recycling" name="recycling"
+                    class="mt-2 w-full rounded-lg border border-mist-200 dark:border-soil-700 px-4 py-3 bg-white dark:bg-soil-800 text-soil-900 dark:text-mist-50 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 focus:outline-none">
+              <option value="always">Always — paper, plastic, glass &amp; metal</option>
+              <option value="sometimes" selected>Sometimes / some materials</option>
+              <option value="never">Rarely or never</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ============ NAVIGATION BUTTONS ============ -->
+      <div class="mt-8 pt-6 border-t border-mist-200 dark:border-soil-700 flex items-center justify-between gap-4">
+        <button type="button" id="btn-prev"
+                class="invisible inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-mist-200 dark:border-soil-700 bg-white dark:bg-soil-800 text-soil-800 dark:text-mist-100 font-semibold hover:bg-mist-100 dark:hover:bg-soil-700 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          ← Back
+        </button>
+        <button type="button" id="btn-next"
+                class="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-leaf-600 hover:bg-leaf-700 text-white font-semibold shadow-lg shadow-leaf-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          Next →
+        </button>
+        <!-- Submit button only appears on the final step -->
+        <button type="submit" id="btn-submit"
+                class="hidden inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-leaf-600 hover:bg-leaf-700 text-white font-semibold shadow-lg shadow-leaf-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          🌱 Calculate My Footprint
+        </button>
+      </div>
+    </form>
+
+    <p class="mt-6 text-center text-xs text-soil-700 dark:text-mist-200">
+      Your answers are processed entirely in your browser and saved only to your device (localStorage).
+    </p>
+  </section>
+
+    <!-- ================== VIEW: RESULTS ================== -->
+    <section data-page="results" class="app-page max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+
+    <!-- ===================== EMPTY STATE =====================
+         Shown by results.js when there is no saved calculation. -->
+    <section id="empty-state" class="hidden text-center py-16">
+      <div class="mx-auto h-20 w-20 rounded-full bg-leaf-100 dark:bg-leaf-900/40 flex items-center justify-center" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-leaf-600 dark:text-leaf-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <h1 class="mt-6 text-2xl sm:text-3xl font-extrabold text-soil-900 dark:text-mist-50">No results yet</h1>
+      <p class="mt-3 text-soil-700 dark:text-mist-200 max-w-md mx-auto">
+        You haven't calculated a footprint on this device yet. It only takes about three minutes.
+      </p>
+      <a href="#calculator"
+         class="mt-8 inline-flex items-center gap-2 bg-leaf-600 hover:bg-leaf-700 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-leaf-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+        Start Calculating →
+      </a>
+    </section>
+
+    <!-- ===================== DASHBOARD =====================
+         Hidden until results.js confirms data exists.          -->
+    <section id="dashboard" class="hidden">
+
+      <!-- ---------- Header + big total ---------- -->
+      <div class="text-center">
+        <p id="result-mode-badge" class="inline-flex items-center gap-2 bg-leaf-100 dark:bg-leaf-900/40 text-leaf-800 dark:text-leaf-200 text-xs font-semibold uppercase tracking-wider px-3 py-1.5 rounded-full">
+          Personal footprint
+        </p>
+        <h1 class="mt-4 text-3xl sm:text-4xl font-extrabold text-soil-900 dark:text-mist-50">Your Carbon Footprint</h1>
+
+        <!-- The headline number, filled in by results.js -->
+        <p class="mt-6 text-6xl sm:text-7xl font-extrabold text-leaf-600 dark:text-leaf-400 leading-none">
+          <span id="total-tons">0</span><span class="text-3xl sm:text-4xl font-bold text-soil-700 dark:text-mist-200"> tonnes</span>
+        </p>
+        <p class="mt-2 text-soil-700 dark:text-mist-200">of CO₂ per year (<span id="total-lbs">0</span> kg)</p>
+
+        <!-- Verdict message: below / near / above benchmark -->
+        <p id="verdict" class="mt-4 inline-block px-4 py-2 rounded-xl text-sm font-semibold"></p>
+      </div>
+
+      <!-- ---------- Comparison progress bar vs benchmark ---------- -->
+      <div class="mt-10 bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6 sm:p-8">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-lg font-bold text-soil-900 dark:text-mist-50">How you compare</h2>
+          <p class="text-sm text-soil-700 dark:text-mist-200">Benchmark: <span id="benchmark-label" class="font-semibold">2 tonnes/year</span></p>
+        </div>
+        <div class="mt-4 h-5 bg-mist-100 dark:bg-soil-700 rounded-full overflow-hidden border border-mist-200 dark:border-soil-700"
+             role="img" id="compare-bar-wrap" aria-label="Your footprint compared to the benchmark">
+          <div id="compare-bar" class="bar-fill h-full rounded-full bg-leaf-500"></div>
+        </div>
+        <div class="mt-2 flex justify-between text-xs text-soil-700 dark:text-mist-200">
+          <span>0</span>
+          <span id="compare-scale-max">4 tonnes</span>
+        </div>
+        <p id="compare-note" class="mt-3 text-sm text-soil-700 dark:text-mist-200"></p>
+      </div>
+
+      <!-- ---------- Category breakdown: CSS-only bar chart ---------- -->
+      <div class="mt-8 bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6 sm:p-8">
+        <h2 class="text-lg font-bold text-soil-900 dark:text-mist-50">Where it comes from</h2>
+        <p class="mt-1 text-sm text-soil-700 dark:text-mist-200">Annual emissions by category. The longest bar is your biggest opportunity.</p>
+
+        <!-- Each row: label + animated bar + value. Widths set by results.js. -->
+        <div class="mt-6 space-y-5" id="chart">
+          <!-- Transportation -->
+          <div>
+            <div class="flex justify-between text-sm font-semibold text-soil-900 dark:text-mist-50 mb-1.5">
+              <span>🚗 Transportation</span>
+              <span id="val-transport">0 kg</span>
+            </div>
+            <div class="h-4 bg-mist-100 dark:bg-soil-700 rounded-full overflow-hidden border border-mist-200 dark:border-soil-700">
+              <div id="bar-transport" class="bar-fill h-full rounded-full bg-leaf-600"></div>
+            </div>
+          </div>
+          <!-- Energy -->
+          <div>
+            <div class="flex justify-between text-sm font-semibold text-soil-900 dark:text-mist-50 mb-1.5">
+              <span>⚡ Energy</span>
+              <span id="val-energy">0 kg</span>
+            </div>
+            <div class="h-4 bg-mist-100 dark:bg-soil-700 rounded-full overflow-hidden border border-mist-200 dark:border-soil-700">
+              <div id="bar-energy" class="bar-fill h-full rounded-full bg-leaf-400"></div>
+            </div>
+          </div>
+          <!-- Lifestyle & Waste -->
+          <div>
+            <div class="flex justify-between text-sm font-semibold text-soil-900 dark:text-mist-50 mb-1.5">
+              <span id="lifestyle-label">🍽️ Diet &amp; Waste</span>
+              <span id="val-lifestyle">0 kg</span>
+            </div>
+            <div class="h-4 bg-mist-100 dark:bg-soil-700 rounded-full overflow-hidden border border-mist-200 dark:border-soil-700">
+              <div id="bar-lifestyle" class="bar-fill h-full rounded-full bg-leaf-300"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fun equivalence line, e.g. "= 92 trees needed to absorb this" -->
+        <p id="equivalence" class="mt-6 text-sm text-soil-700 dark:text-mist-200 bg-leaf-50 dark:bg-leaf-900/20 border border-leaf-200 dark:border-leaf-800 rounded-xl px-4 py-3"></p>
+      </div>
+
+      <!-- ---------- REDUCTION ADVISOR ---------- -->
+      <div class="mt-8 bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6 sm:p-8">
+        <div class="flex items-center gap-3">
+          <div class="h-11 w-11 rounded-xl bg-leaf-600 text-white flex items-center justify-center text-xl" aria-hidden="true">💡</div>
+          <div>
+            <h2 class="text-lg font-bold text-soil-900 dark:text-mist-50">Your Reduction Advisor</h2>
+            <p id="advisor-intro" class="text-sm text-soil-700 dark:text-mist-200"></p>
+          </div>
+        </div>
+
+        <!-- Tip cards injected here by results.js -->
+        <ul id="tips-list" class="mt-6 space-y-4"></ul>
+      </div>
+
+      <!-- ---------- Actions ---------- -->
+      <div class="mt-10 flex flex-col sm:flex-row justify-center gap-4 no-print">
+        <a href="#calculator"
+           class="inline-flex justify-center items-center gap-2 bg-leaf-600 hover:bg-leaf-700 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-leaf-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          ↻ Recalculate
+        </a>
+        <button type="button" onclick="window.print()"
+                class="inline-flex justify-center items-center gap-2 bg-white dark:bg-soil-800 hover:bg-mist-100 dark:hover:bg-soil-700 text-soil-800 dark:text-mist-100 font-semibold px-8 py-3.5 rounded-xl border border-mist-200 dark:border-soil-700 transition-colors focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          🖨️ Print / Save Report
+        </button>
+        <button type="button" id="btn-clear"
+                class="inline-flex justify-center items-center gap-2 bg-white dark:bg-soil-800 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-700 dark:text-red-400 font-semibold px-8 py-3.5 rounded-xl border border-mist-200 dark:border-soil-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+          🗑️ Clear My Data
+        </button>
+      </div>
+
+      <p id="result-date" class="mt-6 text-center text-xs text-soil-700 dark:text-mist-200"></p>
+    </section>
+  </section>
+
+    <!-- ================== VIEW: ABOUT ================== -->
+    <section data-page="about" class="app-page">
+
+    <!-- ===================== HERO ===================== -->
+    <section class="bg-gradient-to-b from-leaf-50 to-mist-50 dark:from-soil-800 dark:to-soil-900">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
+        <p class="inline-flex items-center gap-2 bg-leaf-100 dark:bg-leaf-900/40 text-leaf-800 dark:text-leaf-200 text-xs font-semibold uppercase tracking-wider px-3 py-1.5 rounded-full">
+          Our Mission
+        </p>
+        <h1 class="mt-4 text-4xl sm:text-5xl font-extrabold text-soil-900 dark:text-mist-50 leading-tight">
+          Carbon literacy for <span class="text-leaf-600 dark:text-leaf-400">every community</span>
+        </h1>
+        <p class="mt-5 text-lg text-soil-700 dark:text-mist-200 leading-relaxed">
+          EcoStep is a student-built community engagement project with one simple belief:
+          when people can <em>see</em> their environmental impact, they act on it.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===================== THE STORY ===================== -->
+    <section class="max-w-3xl mx-auto px-4 sm:px-6 py-12 space-y-10">
+
+      <article>
+        <h2 class="text-2xl font-bold text-soil-900 dark:text-mist-50">Why we built this</h2>
+        <p class="mt-3 text-soil-700 dark:text-mist-200 leading-relaxed">
+          Most people genuinely want to live more sustainably — but "reduce your carbon footprint"
+          is vague advice when you don't know what your footprint <em>is</em>, or which habits
+          actually matter. Professional carbon audits are expensive and aimed at corporations,
+          while most online calculators bury users in jargon.
+        </p>
+        <p class="mt-3 text-soil-700 dark:text-mist-200 leading-relaxed">
+          EcoStep was created as a <strong>2nd-year Information Technology community engagement project</strong>
+          to close that gap: a free, friendly tool that any household, student group, or local
+          small business can use in under three minutes — no sign-up, no data collection, no jargon.
+        </p>
+      </article>
+
+      <article>
+        <h2 class="text-2xl font-bold text-soil-900 dark:text-mist-50">What we stand for</h2>
+        <div class="mt-5 grid sm:grid-cols-2 gap-5">
+          <div class="bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6">
+            <p class="text-2xl" aria-hidden="true">🔍</p>
+            <h3 class="mt-2 font-bold text-soil-900 dark:text-mist-50">Transparency</h3>
+            <p class="mt-1.5 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">Every calculation uses published emission factors, and the math is explained in the open-source code. No black boxes.</p>
+          </div>
+          <div class="bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6">
+            <p class="text-2xl" aria-hidden="true">🔒</p>
+            <h3 class="mt-2 font-bold text-soil-900 dark:text-mist-50">Privacy</h3>
+            <p class="mt-1.5 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">Your answers never leave your device. Results are saved only in your own browser's local storage — delete them anytime.</p>
+          </div>
+          <div class="bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6">
+            <p class="text-2xl" aria-hidden="true">🎯</p>
+            <h3 class="mt-2 font-bold text-soil-900 dark:text-mist-50">Actionability</h3>
+            <p class="mt-1.5 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">A number without a plan changes nothing. Our Reduction Advisor always pairs your result with concrete next steps.</p>
+          </div>
+          <div class="bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6">
+            <p class="text-2xl" aria-hidden="true">🤝</p>
+            <h3 class="mt-2 font-bold text-soil-900 dark:text-mist-50">Community</h3>
+            <p class="mt-1.5 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">Individual change matters most when it spreads. EcoStep is designed to be shared — in classrooms, housing societies, and local businesses.</p>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <h2 class="text-2xl font-bold text-soil-900 dark:text-mist-50">How the estimates work</h2>
+        <p class="mt-3 text-soil-700 dark:text-mist-200 leading-relaxed">
+          EcoStep converts your everyday inputs into annual kilograms of CO₂ using simplified,
+          publicly available emission factors adapted for the Indian context, for example:
+        </p>
+        <ul class="mt-4 space-y-2 text-soil-700 dark:text-mist-200 text-sm bg-white dark:bg-soil-800 border border-mist-200 dark:border-soil-700 rounded-2xl p-6">
+          <li>🚗 <strong>0.19 kg CO₂</strong> per km in an average petrol car; <strong>0.05 kg</strong> per km on a bike/scooter</li>
+          <li>🚌 <strong>0.08 kg CO₂</strong> per passenger-km on public transport (bus / metro / train)</li>
+          <li>🚶 <strong>0 kg CO₂</strong> for walking — every km walked instead of driven avoids ~0.19 kg</li>
+          <li>⚡ <strong>0.82 kg CO₂</strong> per unit (kWh) of grid electricity, estimated from your bill at ~₹8/unit</li>
+          <li>🔥 <strong>~42 kg CO₂</strong> per 14.2 kg LPG cylinder (≈ 0.05 kg per ₹ spent on gas)</li>
+          <li>🍽️ Food footprint: vegetarian ≈ <strong>1,100 kg/yr</strong>; non-vegetarian ≈ <strong>1,700 kg/yr</strong></li>
+          <li>🌳 One mature tree absorbs about <strong>22 kg CO₂</strong> per year</li>
+        </ul>
+        <p class="mt-3 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">
+          These are educational estimates, not an official carbon audit — but they're accurate
+          enough to show you where your biggest opportunities are.
+        </p>
+      </article>
+
+      <!-- CTA -->
+      <div class="text-center pt-4">
+        <a href="#calculator"
+           class="inline-flex items-center gap-2 bg-leaf-600 hover:bg-leaf-700 text-white text-lg font-semibold px-10 py-4 rounded-xl shadow-lg shadow-leaf-600/20 transition-all hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-2">
+          Take your first EcoStep →
+        </a>
+      </div>
+    </section>
+  </section>
+
+  </main>
+
+<footer class="bg-soil-900 text-mist-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid sm:grid-cols-3 gap-8">
+      <div>
+        <p class="flex items-center gap-2 text-white font-bold text-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-leaf-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z"/>
+          </svg>
+          EcoStep
+        </p>
+        <p class="mt-2 text-sm text-mist-200/80">A community engagement project promoting carbon literacy and sustainable living.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <p class="font-semibold text-white text-sm uppercase tracking-wider">Pages</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li><a href="#home"      class="hover:text-leaf-300 transition-colors">Home</a></li>
+          <li><a href="#calculator" class="hover:text-leaf-300 transition-colors">Calculator</a></li>
+          <li><a href="#results"    class="hover:text-leaf-300 transition-colors">My Results</a></li>
+          <li><a href="#about"      class="hover:text-leaf-300 transition-colors">About the Project</a></li>
+        </ul>
+      </nav>
+      <div>
+        <p class="font-semibold text-white text-sm uppercase tracking-wider">Note</p>
+        <p class="mt-3 text-sm text-mist-200/80">
+          Estimates use simplified, publicly available emission factors (EPA &amp; similar sources)
+          and are intended for education — not official carbon accounting.
+        </p>
+      </div>
+    </div>
+    <div class="border-t border-soil-700">
+      <p class="max-w-6xl mx-auto px-4 sm:px-6 py-4 text-xs text-mist-200/70">
+        © <span id="footer-year">2026</span> EcoStep — Built with 💚 for a Community Engagement project. All calculations run locally in your browser.
+      </p>
+    </div>
+  </footer>
+
+  <!-- ============ INLINE SCRIPTS (formerly js/main.js + calculator.js + results.js + router) ============ -->
+  <script>
+/* ============================================================
+   EcoStep — js/main.js
+   Shared, site-wide JavaScript loaded on EVERY page.
+   Responsibilities:
+     1. Toggle the mobile navigation menu (hamburger)
+     2. Keep the footer copyright year current
+   Page-specific logic lives in calculator.js and results.js.
+   ============================================================ */
+
+'use strict';
+
+// ------------------------------------------------------------
+// 1. MOBILE NAVIGATION TOGGLE
+//    The hamburger button shows/hides the #mobile-menu list and
+//    keeps aria-expanded in sync for screen readers.
+// ------------------------------------------------------------
+(function initMobileMenu() {
+  const btn  = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+
+  // Guard clause: some pages might not include the mobile menu.
+  if (!btn || !menu) return;
+
+  btn.addEventListener('click', () => {
+    const isOpen = !menu.classList.contains('hidden');
+    menu.classList.toggle('hidden');
+    // aria-expanded tells assistive tech whether the menu is open.
+    btn.setAttribute('aria-expanded', String(!isOpen));
+  });
+})();
+
+// ------------------------------------------------------------
+// 2. DYNAMIC FOOTER YEAR
+//    Avoids hard-coding the year in every HTML file.
+// ------------------------------------------------------------
+(function initFooterYear() {
+  const yearEl = document.getElementById('footer-year');
+  if (yearEl) yearEl.textContent = new Date().getFullYear();
+})();
+
+// ------------------------------------------------------------
+// 3. THEME SWITCHER (Bright ☀️ / Dark 🌙 / System 💻)
+//    - The preference is saved in localStorage ('ecostep_theme').
+//    - 'system' follows the OS setting LIVE via matchMedia.
+//    - A tiny inline script in each page's <head> applies the
+//      theme before first paint, so there is no white flash;
+//      this block wires up the buttons and keeps state in sync.
+// ------------------------------------------------------------
+(function initTheme() {
+  const THEME_KEY = 'ecostep_theme';
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  /** Read the saved preference; default to following the system. */
+  function getPref() {
+    try { return localStorage.getItem(THEME_KEY) || 'system'; }
+    catch (_) { return 'system'; }
+  }
+
+  /** Add/remove the .dark class on <html> based on the preference. */
+  function applyTheme(pref) {
+    const dark = pref === 'dark' || (pref === 'system' && media.matches);
+    document.documentElement.classList.toggle('dark', dark);
+  }
+
+  /** Highlight the active button in every switcher on the page
+      (there are two: desktop navbar + mobile dropdown menu). */
+  function paintButtons(pref) {
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      const active = btn.dataset.theme === pref;
+      btn.classList.toggle('theme-active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  // Wire up every ☀️ / 🌙 / 💻 button.
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pref = btn.dataset.theme;
+      try { localStorage.setItem(THEME_KEY, pref); } catch (_) { /* private mode */ }
+      applyTheme(pref);
+      paintButtons(pref);
+    });
+  });
+
+  // In "System" mode, react instantly when the OS theme changes.
+  media.addEventListener('change', () => {
+    if (getPref() === 'system') applyTheme('system');
+  });
+
+  // Sync the UI on page load.
+  applyTheme(getPref());
+  paintButtons(getPref());
+})();
+
+/* ============================================================
+   EcoStep — js/calculator.js   (India edition: km, ₹, kg CO2)
+   Logic for calculator.html:
+     1. Personal / Business mode toggle
+     2. Public / Private transport-medium toggle
+     3. Multi-step form navigation + progress bar
+     4. Input validation (numbers only, sensible ranges)
+     5. CO2 footprint calculation using standard emission factors
+     6. Saving the result to localStorage for results.html
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   EMISSION FACTORS (the science behind the math)
+   Simplified, publicly available averages for the Indian
+   context, expressed in KILOGRAMS of CO2.
+   The results page converts kg → tonnes (1 tonne = 1,000 kg).
+   ------------------------------------------------------------ */
+const FACTORS = {
+  // --- Transportation (kg CO2 per km) ----------------------------------
+  // Average petrol car / four-wheeler ≈ 0.19 kg CO2 per km.
+  CAR_KG_PER_KM: 0.19,
+  // Two-wheeler (bike / scooter) ≈ 0.05 kg CO2 per km.
+  BIKE_KG_PER_KM: 0.05,
+  // Public transport (bus / metro / train, PER PASSENGER) ≈ 0.08 kg/km.
+  // Much lower because emissions are shared across many passengers.
+  PUBLIC_KG_PER_KM: 0.08,
+  // Walking = 0 kg CO2. We use the car factor to show the user how
+  // much CO2 their walking AVOIDS compared to driving the same km.
+
+  // --- Energy ------------------------------------------------------------
+  // Average Indian residential tariff ≈ ₹8 per unit (kWh)
+  //   → units per month = bill ÷ 8
+  RUPEES_PER_KWH: 8,
+  // India's grid emission factor ≈ 0.82 kg CO2 per kWh (coal-heavy grid).
+  KG_PER_KWH: 0.82,
+  // LPG: one 14.2 kg cylinder ≈ ₹850 and releases ≈ 42 kg CO2 when burned
+  //   → 42 ÷ 850 ≈ 0.05 kg CO2 for every ₹1 spent on gas.
+  GAS_KG_PER_RUPEE: 0.05,
+
+  // --- Diet (personal mode, kg CO2e per YEAR) ------------------------------
+  // Food-related annual emissions for typical Indian diets:
+  DIET_KG: {
+    veg: 1100,     // vegetarian  ≈ 1,100 kg CO2e / year
+    nonveg: 1700,  // non-vegetarian ≈ 1,700 kg CO2e / year
+  },
+
+  // --- Waste ---------------------------------------------------------------
+  // Average annual household-waste emissions per person ≈ 320 kg CO2.
+  WASTE_BASE_KG: 320,
+  // Consistent recycling / segregation avoids roughly this much per year:
+  RECYCLE_SAVINGS_KG: { always: 270, sometimes: 130, never: 0 },
+
+  // --- Business mode ----------------------------------------------------------
+  // Office waste + supplies ≈ 160 kg CO2 per employee per year.
+  BUSINESS_KG_PER_EMPLOYEE: 160,
+  // A recycling program cuts that waste figure by a percentage:
+  BUSINESS_RECYCLE_CUT: { always: 0.4, sometimes: 0.2, never: 0 },
+};
+
+/* Key used to pass results to results.html via localStorage */
+const STORAGE_KEY = 'ecostep_results';
+
+/* ------------------------------------------------------------
+   STATE
+   ------------------------------------------------------------ */
+let currentStep = 1;            // which form step is visible (1–3)
+const TOTAL_STEPS = 3;
+let mode = 'personal';          // 'personal' | 'business'
+
+/* Cached DOM references */
+const form       = document.getElementById('calc-form');
+const btnPrev    = document.getElementById('btn-prev');
+const btnNext    = document.getElementById('btn-next');
+const btnSubmit  = document.getElementById('btn-submit');
+const progressEl = document.getElementById('progress-bar');
+const progressTrack = document.getElementById('progress-bar-track');
+const statusEl   = document.getElementById('form-status');
+const transportModeEl = document.getElementById('transport-mode');
+
+/* ============================================================
+   1. PERSONAL / BUSINESS MODE TOGGLE
+   ============================================================ */
+function setMode(newMode) {
+  mode = newMode;
+  const personalBtn = document.getElementById('mode-personal');
+  const businessBtn = document.getElementById('mode-business');
+  const isPersonal  = mode === 'personal';
+
+  personalBtn.setAttribute('aria-pressed', String(isPersonal));
+  businessBtn.setAttribute('aria-pressed', String(!isPersonal));
+  // .mode-active styles the selected pill (theme-aware — see css/style.css).
+  personalBtn.classList.toggle('mode-active', isPersonal);
+  businessBtn.classList.toggle('mode-active', !isPersonal);
+
+  // Swap every label variant: data-label="xxx-personal" vs "xxx-business".
+  document.querySelectorAll('[data-label$="-personal"]').forEach(el => el.classList.toggle('hidden', !isPersonal));
+  document.querySelectorAll('[data-label$="-business"]').forEach(el => el.classList.toggle('hidden', isPersonal));
+
+  // Personal mode asks about diet; business mode asks about employees.
+  document.getElementById('field-diet').classList.toggle('hidden', !isPersonal);
+  document.getElementById('field-employees').classList.toggle('hidden', isPersonal);
+}
+
+document.getElementById('mode-personal').addEventListener('click', () => setMode('personal'));
+document.getElementById('mode-business').addEventListener('click', () => setMode('business'));
+
+/* ============================================================
+   2. PUBLIC / PRIVATE TRANSPORT MEDIUM TOGGLE
+   Selecting "private" shows car + bike km inputs;
+   selecting "public" shows the public-transport km input.
+   ============================================================ */
+function updateTransportFields() {
+  const isPrivate = transportModeEl.value === 'private';
+  document.getElementById('field-private').classList.toggle('hidden', !isPrivate);
+  document.getElementById('field-public').classList.toggle('hidden', isPrivate);
+
+  // Clear errors on the fields we just hid, so stale messages
+  // can't block the "Next" button.
+  (isPrivate ? ['public-km'] : ['car-km', 'bike-km']).forEach(clearError);
+}
+transportModeEl.addEventListener('change', updateTransportFields);
+
+/* ============================================================
+   3. MULTI-STEP NAVIGATION
+   ============================================================ */
+function showStep(step) {
+  currentStep = step;
+
+  document.querySelectorAll('.form-step').forEach(fs => {
+    fs.classList.toggle('active', Number(fs.dataset.step) === step);
+  });
+
+  const pct = Math.round((step / TOTAL_STEPS) * 100);
+  progressEl.style.width = pct + '%';
+  progressTrack.setAttribute('aria-valuenow', String(pct));
+
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const label = document.getElementById('progress-label-' + i);
+    // Toggle both light and dark highlight classes for the active step.
+    label.classList.toggle('text-leaf-700', i === step);
+    label.classList.toggle('dark:text-leaf-300', i === step);
+  }
+
+  btnPrev.classList.toggle('invisible', step === 1);
+  btnNext.classList.toggle('hidden', step === TOTAL_STEPS);
+  btnSubmit.classList.toggle('hidden', step !== TOTAL_STEPS);
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+btnNext.addEventListener('click', () => {
+  if (validateStep(currentStep)) showStep(currentStep + 1);
+});
+
+btnPrev.addEventListener('click', () => showStep(currentStep - 1));
+
+/* ============================================================
+   4. VALIDATION
+   Rules: value must be a number, >= min, and <= a sanity cap.
+   Empty fields are treated as 0 (except employees in business
+   mode, which must be at least 1).
+   ============================================================ */
+
+/** Per-field validation rules: min, max and a friendly name. */
+const RULES = {
+  'car-km':        { min: 0, max: 50000,   label: 'Car km per week' },
+  'bike-km':       { min: 0, max: 20000,   label: 'Bike km per week' },
+  'public-km':     { min: 0, max: 20000,   label: 'Public transport km per week' },
+  'walk-km':       { min: 0, max: 500,     label: 'Walking km per week' },
+  'electric-bill': { min: 0, max: 10000000, label: 'Electricity bill (₹)' },
+  'gas-bill':      { min: 0, max: 10000000, label: 'Gas bill (₹)' },
+  'employees':     { min: 1, max: 100000,  label: 'Number of employees' },
+};
+
+/**
+ * Which numeric inputs belong to which step. Step 1 fields depend
+ * on the selected transport medium, so we compute them on the fly.
+ */
+function fieldsForStep(step) {
+  if (step === 1) {
+    const kmFields = transportModeEl.value === 'private'
+      ? ['car-km', 'bike-km']
+      : ['public-km'];
+    return [...kmFields, 'walk-km'];
+  }
+  if (step === 2) return ['electric-bill', 'gas-bill'];
+  // Step 3: only business mode has a numeric field (employees).
+  return mode === 'business' ? ['employees'] : [];
+}
+
+/** Show an inline error message under a field and mark it red. */
+function setError(id, message) {
+  const input = document.getElementById(id);
+  const errEl = document.getElementById(id + '-error');
+  input.classList.add('input-error');
+  input.setAttribute('aria-invalid', 'true');
+  errEl.textContent = message;
+  errEl.classList.remove('hidden');
+}
+
+/** Clear the error state of a field. */
+function clearError(id) {
+  const input = document.getElementById(id);
+  const errEl = document.getElementById(id + '-error');
+  if (!input || !errEl) return;
+  input.classList.remove('input-error');
+  input.removeAttribute('aria-invalid');
+  errEl.textContent = '';
+  errEl.classList.add('hidden');
+}
+
+/**
+ * Validate one field against its rules.
+ * @returns {boolean} true when the value is acceptable.
+ */
+function validateField(id) {
+  const raw = document.getElementById(id).value.trim();
+  const rule = RULES[id];
+
+  // Empty is allowed (treated as 0) — EXCEPT employees, which is required.
+  if (raw === '') {
+    if (id === 'employees') {
+      setError(id, 'Please enter how many employees you have (at least 1).');
+      return false;
+    }
+    clearError(id);
+    return true;
+  }
+
+  const value = Number(raw);
+
+  if (Number.isNaN(value)) {
+    setError(id, `${rule.label} must be a number.`);
+    return false;
+  }
+  if (value < rule.min) {
+    setError(id, `${rule.label} can't be less than ${rule.min}.`);
+    return false;
+  }
+  if (value > rule.max) {
+    setError(id, `${rule.label} looks too large — please double-check (max ${rule.max.toLocaleString('en-IN')}).`);
+    return false;
+  }
+
+  clearError(id);
+  return true;
+}
+
+/** Validate every numeric field on a given step. */
+function validateStep(step) {
+  const fields = fieldsForStep(step);
+  let allValid = true;
+  fields.forEach(id => { if (!validateField(id)) allValid = false; });
+
+  statusEl.textContent = allValid ? '' : 'Some answers need attention. Please fix the highlighted fields.';
+  return allValid;
+}
+
+// Live re-validation: clear the error as soon as the user fixes the value.
+Object.keys(RULES).forEach(id => {
+  const input = document.getElementById(id);
+  if (input) input.addEventListener('input', () => validateField(id));
+});
+
+/* ============================================================
+   5. THE CARBON FOOTPRINT CALCULATION
+   Everything is computed as ANNUAL kilograms of CO2 per category.
+   ============================================================ */
+
+/** Read a numeric input, treating blank as 0. */
+function num(id) {
+  const v = Number(document.getElementById(id).value);
+  return Number.isFinite(v) ? v : 0;
+}
+
+function calculateFootprint() {
+  const transportMode = transportModeEl.value; // 'private' | 'public'
+
+  /* ---------- CATEGORY 1: TRANSPORTATION ----------
+     Private : car km/week × 52 × 0.19 kg/km
+             + bike km/week × 52 × 0.05 kg/km
+     Public  : km/week × 52 × 0.08 kg/km (per passenger)
+     Walking : 0 kg — but we compute the CO2 the user AVOIDS
+               versus driving those km, as a positive stat.   */
+  let carKg = 0, bikeKg = 0, publicKg = 0;
+
+  if (transportMode === 'private') {
+    carKg  = num('car-km')  * 52 * FACTORS.CAR_KG_PER_KM;
+    bikeKg = num('bike-km') * 52 * FACTORS.BIKE_KG_PER_KM;
+  } else {
+    publicKg = num('public-km') * 52 * FACTORS.PUBLIC_KG_PER_KM;
+  }
+  const transportKg = carKg + bikeKg + publicKg;
+
+  // Walking credit (NOT added to the footprint — it's already zero):
+  // "if you had driven these km instead, you'd have emitted this much".
+  const walkAvoidedKg = num('walk-km') * 52 * FACTORS.CAR_KG_PER_KM;
+
+  /* ---------- CATEGORY 2: ENERGY ----------
+     Electricity : (₹bill ÷ ₹8 per unit) = units(kWh)/month
+                   units × 0.82 kg/kWh × 12 months = kg/year
+     Gas (LPG)   : ₹bill × 0.05 kg CO2 per rupee × 12 = kg/year */
+  const kwhPerMonth = num('electric-bill') / FACTORS.RUPEES_PER_KWH;
+  const electricKg  = kwhPerMonth * FACTORS.KG_PER_KWH * 12;
+  const gasKg       = num('gas-bill') * FACTORS.GAS_KG_PER_RUPEE * 12;
+  const energyKg    = electricKg + gasKg;
+
+  /* ---------- CATEGORY 3: LIFESTYLE & WASTE ----------
+     Personal : diet lookup (veg 1,100 / non-veg 1,700 kg)
+                + (320 kg waste − recycling savings)
+     Business : employees × 160 kg, reduced by recycling-program % */
+  const recycling = document.getElementById('recycling').value;
+  let lifestyleKg;
+
+  if (mode === 'personal') {
+    const dietKg  = FACTORS.DIET_KG[document.getElementById('diet').value];
+    const wasteKg = FACTORS.WASTE_BASE_KG - FACTORS.RECYCLE_SAVINGS_KG[recycling];
+    lifestyleKg   = dietKg + wasteKg;
+  } else {
+    const employees = Math.max(1, num('employees'));
+    const baseWaste = employees * FACTORS.BUSINESS_KG_PER_EMPLOYEE;
+    lifestyleKg     = baseWaste * (1 - FACTORS.BUSINESS_RECYCLE_CUT[recycling]);
+  }
+
+  /* ---------- TOTAL ---------- */
+  const totalKg = transportKg + energyKg + lifestyleKg;
+
+  // Return a single structured object — this is what gets stored.
+  return {
+    mode,
+    timestamp: new Date().toISOString(),
+    categories: {
+      transport: Math.round(transportKg),
+      energy:    Math.round(energyKg),
+      lifestyle: Math.round(lifestyleKg),
+    },
+    breakdown: {
+      carKg:    Math.round(carKg),
+      bikeKg:   Math.round(bikeKg),
+      publicKg: Math.round(publicKg),
+      electricKg: Math.round(electricKg),
+      gasKg:      Math.round(gasKg),
+      walkAvoidedKg: Math.round(walkAvoidedKg),
+    },
+    inputs: {
+      transportMode,
+      carKm:    num('car-km'),
+      bikeKm:   num('bike-km'),
+      publicKm: num('public-km'),
+      walkKm:   num('walk-km'),
+      electricBill: num('electric-bill'),
+      gasBill:      num('gas-bill'),
+      diet:      mode === 'personal' ? document.getElementById('diet').value : null,
+      employees: mode === 'business' ? Math.max(1, num('employees')) : null,
+      recycling,
+    },
+    totalKg: Math.round(totalKg),
+    // 1 tonne = 1,000 kg. Rounded to 2 decimal places.
+    totalTonnes: Math.round((totalKg / 1000) * 100) / 100,
+  };
+}
+
+/* ============================================================
+   6. SUBMIT → SAVE TO LOCALSTORAGE → GO TO RESULTS
+   ============================================================ */
+form.addEventListener('submit', (event) => {
+  event.preventDefault(); // stop the browser's default page reload
+
+  // Final safety net: re-validate every step before calculating.
+  if (!(validateStep(1) && validateStep(2) && validateStep(3))) {
+    for (let s = 1; s <= TOTAL_STEPS; s++) {
+      if (!validateStep(s)) { showStep(s); break; }
+    }
+    return;
+  }
+
+  const results = calculateFootprint();
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+  } catch (err) {
+    alert('Could not save your results in this browser. Please disable private browsing and try again.');
+    return;
+  }
+
+  window.location.hash = '#results'; // SPA: switch to the Results view
+});
+
+/* Initialize the UI on first load */
+setMode('personal');
+updateTransportFields();
+showStep(1);
+
+/* ============================================================
+   EcoStep — js/results.js   (India edition: kg / tonnes CO2)
+   Logic for results.html (the Dashboard & Advisor):
+     1. Load the saved calculation from localStorage
+     2. Render the headline number, comparison bar & CSS chart
+     3. THE REDUCTION ADVISOR ALGORITHM:
+        find the highest-emission category → show 3–5
+        personalized, actionable tips for that category
+   ============================================================ */
+
+
+
+/* ------------------------------------------------------------
+   BENCHMARKS used for the "How you compare" bar.
+   - Personal : ~2 tonnes CO2/year — India's per-person average
+     (the global average is ~4 tonnes).
+   - Business : rough small-business proxy of 2 tonnes per
+     employee per year (minimum 5 tonnes).
+   ------------------------------------------------------------ */
+function getBenchmarkTonnes(data) {
+  if (data.mode === 'business') {
+    const employees = data.inputs.employees || 1;
+    return Math.max(5, employees * 2);
+  }
+  return 2;
+}
+
+/* ------------------------------------------------------------
+   THE TIP LIBRARY
+   Organized by category and mode. Each tip = title, detail, and
+   an approximate annual CO2 saving so advice feels concrete.
+   Transport tips are further split by the user's transport
+   medium (private vs public) for better personalization.
+   ------------------------------------------------------------ */
+const TIPS = {
+  transport: {
+    personal: {
+      // Tips for users who mainly drive a private car / bike
+      private: [
+        { title: 'Shift 2–3 trips a week to bus or metro', detail: 'Public transport emits less than half the CO2 per km of a private car. Even a partial switch adds up fast.', savings: '~150–250 kg/yr' },
+        { title: 'Carpool for your regular commute', detail: 'Sharing a ride with even one colleague halves the per-person emissions of that trip.', savings: '~200 kg/yr' },
+        { title: 'Walk or cycle trips under 2 km', detail: 'Short car/bike hops are the least fuel-efficient km you drive — and the easiest to replace.', savings: '~100 kg/yr' },
+        { title: 'Keep tyres inflated & service on time', detail: 'Correct tyre pressure and regular servicing improve mileage by 3–5%.', savings: '~50–80 kg/yr' },
+        { title: 'Consider CNG or electric for your next vehicle', detail: 'An EV or CNG vehicle cuts per-km emissions by 40–60% compared to petrol.', savings: '500+ kg/yr' },
+      ],
+      // Tips for users who already use public transport
+      public: [
+        { title: 'Prefer metro / train over shared autos & cabs', detail: 'Electric metro and rail have the lowest per-passenger emissions of all motorized transport.', savings: '~80 kg/yr' },
+        { title: 'Walk or cycle the "last mile"', detail: 'Replacing short auto hops to the bus stop or station with walking keeps that km at zero emissions.', savings: '~50 kg/yr' },
+        { title: 'Plan and combine trips', detail: 'Batching errands into one outing instead of several trips cuts total travel km by 10–20%.', savings: '~60 kg/yr' },
+        { title: 'Nudge one friend onto your route', detail: 'You are already low-carbon — the biggest win now is helping someone else leave their vehicle at home.', savings: 'community-scale impact' },
+      ],
+    },
+    business: [
+      { title: 'Introduce route optimization for deliveries', detail: 'Planning routes with a free mapping tool typically trims fleet km by 10–15%.', savings: '10–15% of fleet emissions' },
+      { title: 'Adopt a remote / hybrid work policy', detail: 'Two work-from-home days per week eliminates 40% of employee commute emissions.', savings: '~300 kg/yr per employee' },
+      { title: 'Offer a public-transport allowance', detail: 'Subsidized bus/metro passes shift commutes away from private vehicles.', savings: '~150 kg/yr per employee' },
+      { title: 'Transition the fleet to CNG or electric', detail: 'Replace vehicles with CNG/EV models at their natural end-of-life.', savings: '40–60% per converted vehicle' },
+    ],
+  },
+  energy: {
+    personal: [
+      { title: 'Switch every bulb to LED', detail: 'LEDs use about 75% less electricity than incandescent bulbs and last far longer.', savings: '~100 kg/yr' },
+      { title: 'Run the AC at 24–26°C', detail: 'Every degree cooler adds ~6% to AC power use. 24°C is the BEE-recommended sweet spot.', savings: '~150 kg/yr' },
+      { title: 'Unplug "vampire" electronics', detail: 'TVs, chargers and set-top boxes on standby can be 5–10% of your bill. A power strip fixes it in one click.', savings: '~80 kg/yr' },
+      { title: 'Choose BEE 5-star appliances', detail: 'A 5-star fridge or AC uses 20–30% less power than a 3-star model over its lifetime.', savings: '~200 kg/yr' },
+      { title: 'Look into rooftop solar or a solar water heater', detail: 'With Indian sunshine and subsidies, solar often pays for itself in 4–6 years — and slashes grid emissions.', savings: 'up to 100% of electricity emissions' },
+    ],
+    business: [
+      { title: 'Switch the office to LED lighting', detail: 'Lighting is a big share of commercial electricity; LEDs cut it by three-quarters.', savings: '10%+ of electricity emissions' },
+      { title: 'Set ACs to 24–26°C with a timer', detail: 'Automatically relax cooling outside business hours — pure savings, zero comfort loss.', savings: '~10% of HVAC emissions' },
+      { title: 'Enable power management on all computers', detail: 'Sleep settings on every workstation save ~130 kg CO2 per machine each year.', savings: '~130 kg/yr per PC' },
+      { title: 'Evaluate rooftop solar for your premises', detail: 'Commercial solar with net metering is one of the fastest-payback green investments in India.', savings: 'up to 100% of electricity emissions' },
+    ],
+  },
+  lifestyle: {
+    personal: [
+      { title: 'Try more plant-based meals', detail: 'Swapping a few non-veg meals a week for veg ones meaningfully cuts your food footprint.', savings: '~200–400 kg/yr' },
+      { title: 'Segregate waste: dry, wet & recyclables', detail: 'Consistent segregation and recycling of paper, plastic, glass and metal avoids ~270 kg CO2 a year.', savings: 'up to 270 kg/yr' },
+      { title: 'Compost kitchen scraps', detail: 'Composting prevents methane (a gas ~28× stronger than CO2) from forming in landfill.', savings: '~90 kg/yr' },
+      { title: 'Plan meals to cut food waste', detail: 'Around one-third of household food is wasted — planning shrinks both waste and grocery bills.', savings: '~130 kg/yr' },
+      { title: 'Buy local & seasonal produce', detail: 'Shorter supply chains mean less transport and refrigeration emissions — and fresher food.', savings: '~70 kg/yr' },
+    ],
+    business: [
+      { title: 'Launch a full recycling program', detail: 'Clearly labeled bins for paper, plastic, and e-waste cut office waste emissions by up to 40%.', savings: '~40% of waste emissions' },
+      { title: 'Go paper-light', detail: 'Default to digital documents and double-sided printing — the average office worker uses thousands of sheets a year.', savings: '~45 kg/yr per employee' },
+      { title: 'Replace disposables in the pantry', detail: 'Reusable cups and cutlery eliminate a constant stream of single-use waste.', savings: '~25 kg/yr per employee' },
+      { title: 'Choose sustainable suppliers', detail: 'Ask vendors about recycled materials and consolidated shipping — supply chains are most of a business footprint.', savings: 'varies (often large)' },
+    ],
+  },
+  // One bonus "general" tip appended after the category tips.
+  general: {
+    personal: { title: 'Bonus: share EcoStep with a neighbour', detail: 'Community change multiplies individual change. When ten households act together, savings 10×.', savings: 'community-scale impact' },
+    business: { title: 'Bonus: publish your footprint to your team', detail: 'Teams that see the number cut it. Post this report and re-measure each quarter.', savings: 'ongoing improvement' },
+  },
+};
+
+/* Human-friendly names for each category key */
+const CATEGORY_NAMES = {
+  transport: 'Transportation',
+  energy:    'Energy',
+  lifestyle: 'Diet & Waste',
+};
+
+/* ------------------------------------------------------------
+   Small helpers
+   ------------------------------------------------------------ */
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('en-IN'); // Indian digit grouping (1,00,000)
+
+/* ============================================================
+   MAIN RENDER FLOW
+   ============================================================ */
+function renderResults() {
+  // SPA: reset both views before deciding which one to show
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('dashboard').classList.add('hidden');
+  // ---- 1. Load & parse saved data (guard against corruption) ----
+  let data = null;
+  try {
+    data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  } catch (_) { /* corrupted JSON → treat as no data */ }
+
+  // No valid data (or data from the old lbs version) → empty state.
+  if (!data || !data.categories || typeof data.totalKg !== 'number') {
+    $('empty-state').classList.remove('hidden');
+    return;
+  }
+  $('dashboard').classList.remove('hidden');
+
+  const isBusiness = data.mode === 'business';
+
+  // ---- 2. Headline numbers ----
+  $('result-mode-badge').textContent = isBusiness ? '🏢 Business footprint' : '👤 Personal footprint';
+  $('total-tons').textContent = data.totalTonnes.toFixed(2);
+  $('total-lbs').textContent  = fmt(data.totalKg);
+  if (isBusiness) $('lifestyle-label').textContent = '🗑️ Operations & Waste';
+
+  // ---- 3. Verdict vs benchmark ----
+  const benchmark = getBenchmarkTonnes(data);
+  const ratio = data.totalTonnes / benchmark;
+  const verdict = $('verdict');
+
+  if (ratio <= 0.75) {
+    verdict.textContent = '🌟 Excellent — well below the benchmark. Keep it up!';
+    verdict.className = 'mt-4 inline-block px-4 py-2 rounded-xl text-sm font-semibold bg-leaf-100 dark:bg-leaf-900/40 text-leaf-800 dark:text-leaf-200';
+  } else if (ratio <= 1.15) {
+    verdict.textContent = '👍 Around average — a few changes could put you ahead of the curve.';
+    verdict.className = 'mt-4 inline-block px-4 py-2 rounded-xl text-sm font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200';
+  } else {
+    verdict.textContent = '⚠️ Above the benchmark — the tips below target your biggest sources first.';
+    verdict.className = 'mt-4 inline-block px-4 py-2 rounded-xl text-sm font-semibold bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
+  }
+
+  // ---- 4. Comparison bar (your total vs 2× benchmark scale) ----
+  const scaleMax = benchmark * 2; // bar track represents 0 → 2× benchmark
+  const pct = Math.min(100, (data.totalTonnes / scaleMax) * 100);
+  const compareBar = $('compare-bar');
+  compareBar.style.setProperty('--bar-w', pct.toFixed(1) + '%');
+  compareBar.classList.remove('bg-leaf-500');
+  compareBar.classList.add(ratio <= 0.75 ? 'bg-leaf-500' : ratio <= 1.15 ? 'bg-amber-400' : 'bg-red-400');
+
+  $('benchmark-label').textContent = `${benchmark.toLocaleString('en-IN')} tonnes/year`;
+  $('compare-scale-max').textContent = `${scaleMax.toLocaleString('en-IN')} tonnes`;
+  $('compare-bar-wrap').setAttribute('aria-label',
+    `Your footprint is ${data.totalTonnes} tonnes versus a benchmark of ${benchmark} tonnes.`);
+  $('compare-note').textContent = isBusiness
+    ? `Benchmark estimated at 2 tonnes per employee per year for ${fmt(data.inputs.employees)} employee(s).`
+    : "India's average footprint is about 2 tonnes per person per year (the global average is ~4 tonnes).";
+
+  // ---- 5. Category bar chart (widths relative to the LARGEST category) ----
+  const cats = data.categories; // { transport, energy, lifestyle } in kg
+  const maxCat = Math.max(cats.transport, cats.energy, cats.lifestyle, 1);
+
+  const rows = [
+    ['transport', cats.transport],
+    ['energy',    cats.energy],
+    ['lifestyle', cats.lifestyle],
+  ];
+  rows.forEach(([key, kg]) => {
+    $('val-' + key).textContent = `${fmt(kg)} kg (${(kg / 1000).toFixed(2)} t)`;
+    // CSS variable --bar-w animates the fill (see css/style.css).
+    $('bar-' + key).style.setProperty('--bar-w', ((kg / maxCat) * 100).toFixed(1) + '%');
+  });
+
+  // ---- 6. Fun equivalences: trees + walking credit ----
+  // One mature tree absorbs ~22 kg of CO2 per year.
+  const trees = Math.max(1, Math.round(data.totalKg / 22));
+  let equivText = `🌳 It would take about ${fmt(trees)} mature trees a full year to absorb this footprint.`;
+
+  // Walking credit: CO2 the user AVOIDS by walking instead of driving.
+  const walked = data.breakdown && data.breakdown.walkAvoidedKg;
+  if (walked > 0) {
+    equivText += ` 🚶 Your ${fmt(data.inputs.walkKm)} km of walking each week already avoids ~${fmt(walked)} kg of CO₂ a year versus driving — brilliant!`;
+  }
+  $('equivalence').textContent = equivText;
+
+  // ---- 7. THE REDUCTION ADVISOR ALGORITHM ----
+  renderAdvisor(data);
+
+  // ---- 8. Meta: date + clear-data button ----
+  const when = new Date(data.timestamp);
+  $('result-date').textContent =
+    `Calculated on ${when.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })} — results are stored only on this device.`;
+
+  $('btn-clear').onclick = () => {
+    if (confirm('Delete your saved results from this device?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      window.location.reload();
+    }
+  };
+}
+
+/* ============================================================
+   REDUCTION ADVISOR
+   Algorithm:
+     1. Sort categories by annual kg of CO2 (descending).
+     2. Take the WORST category → pick its top tips for the
+        user's mode (personal/business). Transport tips are
+        further matched to the user's medium (private/public).
+     3. Personalize: filter out tips that don't apply (e.g. skip
+        car-maintenance tips if the user drives 0 car km, skip
+        meat advice for vegetarians, skip recycling advice if
+        they already always recycle).
+     4. Append one general/community bonus tip → 3–5 tips total.
+   ============================================================ */
+function renderAdvisor(data) {
+  const modeKey = data.mode === 'business' ? 'business' : 'personal';
+
+  // Step 1: rank categories high → low.
+  const ranked = Object.entries(data.categories).sort((a, b) => b[1] - a[1]);
+  const [worstKey, worstKg] = ranked[0];
+
+  // Intro sentence naming the biggest source.
+  const share = Math.round((worstKg / Math.max(1, data.totalKg)) * 100);
+  $('advisor-intro').textContent =
+    `${CATEGORY_NAMES[worstKey]} is your largest source — ${share}% of your footprint. Start here:`;
+
+  // Step 2: candidate tips for that category + mode.
+  let tips;
+  if (worstKey === 'transport' && modeKey === 'personal') {
+    // Match the tip set to the user's transport medium.
+    tips = [...TIPS.transport.personal[data.inputs.transportMode === 'public' ? 'public' : 'private']];
+  } else {
+    tips = [...TIPS[worstKey][modeKey]];
+  }
+
+  // Step 3: simple personalization filters.
+  tips = tips.filter(tip => {
+    const t = tip.title.toLowerCase();
+    if (t.includes('tyre')        && (data.inputs.carKm || 0) === 0) return false; // no car → skip maintenance tip
+    if (t.includes('plant-based') && data.inputs.diet === 'veg') return false;     // already vegetarian
+    if ((t.includes('recycl') || t.includes('segregate')) && data.inputs.recycling === 'always') return false;
+    return true;
+  });
+
+  // Keep at most 4 category tips, then add the general bonus tip (3–5 total).
+  tips = tips.slice(0, 4);
+  tips.push(TIPS.general[modeKey]);
+
+  // Step 4: render each tip as an accessible list item card.
+  const list = $('tips-list');
+  list.innerHTML = ''; // clear any previous render
+  tips.forEach((tip, i) => {
+    const li = document.createElement('li');
+    li.className = 'flex gap-4 bg-leaf-50 dark:bg-leaf-900/20 border border-leaf-200 dark:border-leaf-800 rounded-xl p-4 sm:p-5';
+    li.innerHTML = `
+      <div class="flex-shrink-0 h-8 w-8 rounded-full bg-leaf-600 text-white text-sm font-bold flex items-center justify-center" aria-hidden="true">${i + 1}</div>
+      <div>
+        <h3 class="font-bold text-soil-900 dark:text-mist-50">${tip.title}</h3>
+        <p class="mt-1 text-sm text-soil-700 dark:text-mist-200 leading-relaxed">${tip.detail}</p>
+        <p class="mt-2 inline-block text-xs font-semibold text-leaf-800 dark:text-leaf-200 bg-leaf-100 dark:bg-leaf-900/40 px-2.5 py-1 rounded-full">💚 Potential saving: ${tip.savings}</p>
+      </div>`;
+    list.appendChild(li);
+  });
+}
+
+
+/* ============================================================
+   SPA ROUTER (single-file edition)
+   The four former pages are now <section class="app-page"> blocks.
+   The URL hash (#home / #calculator / #results / #about) decides
+   which section is visible; nav links are plain hash anchors.
+   ============================================================ */
+(function initRouter() {
+  const PAGES = ['home', 'calculator', 'results', 'about'];
+  const TITLES = {
+    home: 'EcoStep — Carbon Footprint Calculator & Reduction Advisor',
+    calculator: 'Calculator — EcoStep',
+    results: 'My Results — EcoStep',
+    about: 'About — EcoStep',
+  };
+  // Class tokens toggled on nav links to mark the active page.
+  const ACTIVE   = ['bg-leaf-50', 'dark:bg-soil-700', 'text-leaf-700', 'dark:text-leaf-300', 'font-semibold'];
+  const INACTIVE = ['text-soil-700', 'dark:text-mist-200', 'font-medium'];
+
+  function show(page) {
+    if (!PAGES.includes(page)) {
+      if (page === '') page = 'home';
+      else return; // ignore other anchors (e.g. the skip link's #main-content)
+    }
+
+    // Show only the requested section.
+    document.querySelectorAll('.app-page').forEach(s =>
+      s.classList.toggle('hidden', s.dataset.page !== page));
+
+    // Highlight the matching nav links (desktop + mobile share data-nav).
+    document.querySelectorAll('[data-nav]').forEach(a => {
+      const active = a.dataset.nav === page;
+      ACTIVE.forEach(cl => a.classList.toggle(cl, active));
+      INACTIVE.forEach(cl => a.classList.toggle(cl, !active));
+      if (active) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+
+    // The dashboard re-renders on every visit so it always shows fresh data.
+    if (page === 'results') renderResults();
+
+    // Close the mobile menu and reset scroll for a page-like feel.
+    const menu = document.getElementById('mobile-menu');
+    if (menu) menu.classList.add('hidden');
+    document.title = TITLES[page];
+    window.scrollTo({ top: 0 });
+  }
+
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1)); // initial view on load
+})();
+
+  </script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a343c7bfdd6cff6d',t:'MTc4ODI2MDUyMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
